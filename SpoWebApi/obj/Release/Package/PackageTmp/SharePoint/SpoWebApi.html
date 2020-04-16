@@ -1,0 +1,173 @@
+﻿<table>
+    <tr>
+        <td style="vertical-align:top">
+            <input id="consentButton" type="button" value="Consent" />
+            <br />
+            <input id="getUserInfoButton" type="button" value="Get User Info" />
+            <br />
+
+            <input id="Regions" type="button" value="Regions values" />
+            <br />
+
+            <select id="SelectRegions">
+                <option value="">-- Select --</option>
+            </select>
+
+            <select id="SelectLanguages">
+                <option value="">-- Select --</option>
+            </select>
+        </td>
+        <td style="width:20px">
+            &nbsp;
+        </td>
+        <td style="vertical-align:top">
+            <div id="message">
+                initializing...
+            </div>
+        </td>
+    </tr>
+</table>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+<script src="https://secure.aadcdn.microsoftonline-p.com/lib/1.0.13/js/adal.min.js"></script>
+
+<script type="text/javascript">
+	(function () {
+	    "use strict";
+   
+        var config = {
+	        instance: 'https://login.microsoftonline.com/',
+	        tenant: '671bdc2c-edf4-4e02-955d-493ec6fd349e',
+	        clientId: 'd338df98-465e-4c70-ac7e-b41c6ebfce6e',
+	        endpoints: {
+	            endPointApiUri: 'https://msdswebapi.addivant.com'
+	        },
+	        cacheLocation: 'localStorage'
+        };
+
+        var authContext = new AuthenticationContext(config);
+
+        jQuery(function () {
+            var isCallback = authContext.isCallback(window.location.hash);
+            console.log("Callback: " + isCallback);
+
+            if (isCallback && !authContext.getLoginError()) {
+                console.log("Handle callback");
+                authContext.handleWindowCallback(window.location.hash);
+            } else {
+                var user = authContext.getCachedUser();
+                if (!user) {
+                    console.log("Login");
+                    authContext.login();
+                } else {
+                    console.log("Cached user");
+                    jQuery("#consentButton").click(consent);
+                    jQuery("#getUserInfoButton").click(getUserInfo);
+                    jQuery("#Regions").click(getRegions);
+            
+                }
+            }
+        });
+
+        function consent() {
+            var url = "https://login.microsoftonline.com/" +
+                config.tenant +
+                "/oauth2/authorize?response_type=code" +
+                "&client_id=" + config.clientId +
+                "&redirect_uri=" + window.location.href +
+                "&prompt=admin_consent";
+
+            SP.Utilities.HttpUtility.navigateTo(url);
+        };
+
+        function getAuthToken(clientId) {
+            var dfd = jQuery.Deferred();
+
+            var tokenCache = authContext.getCachedToken(clientId);
+
+            if (tokenCache == undefined) {
+                authContext.acquireToken(clientId, function (error, token) {
+                    if (error || !token) {
+                        dfd.reject(error);
+                    }
+                    else {
+                        dfd.resolve(token);
+                    }
+                });
+            } else {
+                dfd.resolve(tokenCache);
+            }
+
+            return dfd.promise();
+        };
+
+        function getUserInfo() {
+            var call = getAuthToken(config.clientId);
+            call.done(function (token) {
+                if (token != undefined) {
+                    var call2 = jQuery.ajax({
+                        type: "GET",
+                        url: config.endpoints.endPointApiUri + "/api/test/UserInfo",
+                        data: {
+                            "sharePointUrl": _spPageContextInfo.webAbsoluteUrl
+                        },
+                        headers: {
+                            'Accept': 'application/json',
+                            "Authorization": "Bearer " + token
+                        }
+                    });
+                    call2.done(function (response) {
+                        var message = jQuery("#message");
+                        message.text("");
+                        jQuery.each(response, function (index, value) {
+                            message.append(value);
+                            message.append("<br/>");
+                        });
+                    });
+                    call2.fail(function (error) {
+                        var message = jQuery("#message");
+                        message.text(JSON.stringify(error));
+                    });
+                }
+            });
+
+            call.fail(function (error) {
+                var message = jQuery("#message");
+                message.text(JSON.stringify(error));
+            })
+        };
+
+        function getRegions() {
+            var call = getAuthToken(config.clientId);
+            call.done(function (token) {
+                if (token != undefined) {
+                  jQuery.ajax({
+                      url: config.endpoints.endPointApiUri + "/api/test/SAPLanguages",
+                      data: {
+                            "sharePointUrl": _spPageContextInfo.webAbsoluteUrl
+                        },
+                        type: "GET",
+                        headers: {
+                            'Accept': 'application/json',
+                            "Authorization": "Bearer " + token
+                        },
+                        success: function (resultData1) {
+                        /*resultData.d.results;*/
+                            console.log(resultData1);
+                            for (var i = 0; i < resultData1.length; i++) {
+
+                                $('#SelectLanguages').append('<option value="' + resultData1[i]["LanguageID"] + '">' + resultData1[i]["LanguageName"] + '</option>');
+                            }
+                        }
+                    });
+                }
+            });
+               call.fail(function (error) {
+                var message = jQuery("#Regions");
+                message.text(JSON.stringify(error));
+            })
+        }; 
+
+
+	})();
+</script>
